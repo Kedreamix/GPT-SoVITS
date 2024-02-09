@@ -583,6 +583,63 @@ def get_weights_names():
 
 SoVITS_names, GPT_names = get_weights_names()
 
+# 输出音频历史记录
+output_history =[]
+history_max_num = 15
+
+def sync_output_history_to_checkbox_audio():
+    checkbox_result = []
+    audio_result = []
+    for item in output_history:
+        label = item['label']
+        if len(label)>15:
+            label=label[:15]+'...'
+        checkbox_result.append(gr.update(label=label,value=False))
+        audio_result.append(gr.Audio.update(value=item['value']))
+    for _ in range(len(audio_result),history_max_num):
+        checkbox_result.append(gr.Checkbox.update(label="",value=False))
+        audio_result.append(gr.Audio.update(value = None))
+    return [*checkbox_result,*audio_result]
+
+def add_to_history(audio,input_text):
+    if(audio is None or audio[1] is not None):
+        if len(output_history) == history_max_num:
+            output_history.pop()
+        output_history.insert(0,{'value':audio,'label':input_text})
+
+    return [*sync_output_history_to_checkbox_audio()]
+
+def clear_history():
+    global output_history
+    output_history = []
+    checkbox_result = []
+    audio_result = []
+    for _ in range(history_max_num):
+        checkbox_result.append(gr.Checkbox.update(label="",value=False))
+        audio_result.append(gr.Audio.update(value = None))
+    return [*checkbox_result,*audio_result]
+
+def shown_audio_num_change(audio_num):
+    audio_num = int(audio_num)
+    audio_result = []
+    checkbox_result = []
+    for _ in range(audio_num):
+        audio_result.append(gr.Audio.update(visible=True))
+        checkbox_result.append(gr.update(visible=True))
+    for _ in range(audio_num,history_max_num):
+        audio_result.append(gr.Audio.update(visible=False))
+        checkbox_result.append(gr.update(visible=False))
+    return [*checkbox_result,*audio_result]
+
+def delete_selected_history(*selected_list):
+    global output_history
+    print(f"!!!!!!!!{selected_list}")
+    for i in reversed(range(len(output_history))):
+        if(selected_list[i]):
+            output_history.pop(i)
+    print(f"!!!!{output_history}")
+    return [*sync_output_history_to_checkbox_audio()]
+ 
 with gr.Blocks(title="GPT-SoVITS WebUI") as app:
     gr.Markdown(
         value=i18n("本软件以MIT协议开源, 作者不对软件具备任何控制力, 使用软件者、传播软件导出的声音者自负全责. <br>如不认可该条款, 则不能使用或引用软件包内任何代码和文件. 详见根目录<b>LICENSE</b>.")
@@ -623,7 +680,27 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             [inp_ref, prompt_text, prompt_language, text, text_language, how_to_cut],
             [output],
         )
+        history_audio = []
+        history_checkbox = []
+        with gr.Accordion("生成历史"):
+            with gr.Row():
+                shown_audio_num = gr.Slider(1,20,history_max_num,step=1,interactive=True,label="记录显示数量")
+                add_history_button = gr.Button("添加当前音频记录",variant="primary")
+                delete_select_history_button = gr.Button("删除选择的记录")
+                clear_history_button = gr.Button("清空记录")
+            index=0
+            while(index<history_max_num):
+                index+=5
+                with gr.Row():
+                    for _ in range(5):
+                        with gr.Group():
+                            history_checkbox.append(gr.Checkbox(interactive=True,show_label=False,label=""))
+                            history_audio.append(gr.Audio(label=""))
 
+            shown_audio_num.change(shown_audio_num_change,[shown_audio_num],[*history_checkbox,*history_audio])
+            add_history_button.click(add_to_history,[output,text],[*history_checkbox,*history_audio])
+            delete_select_history_button.click(delete_selected_history,[*history_checkbox],[*history_checkbox,*history_audio])
+            clear_history_button.click(clear_history,outputs=[*history_checkbox,*history_audio])
         gr.Markdown(value=i18n("文本切分工具。太长的文本合成出来效果不一定好，所以太长建议先切。合成会根据文本的换行分开合成再拼起来。"))
         with gr.Row():
             text_inp = gr.Textbox(label=i18n("需要合成的切分前文本"), value="")
